@@ -6,6 +6,7 @@ import (
 	"maps"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -58,7 +59,8 @@ type LocalExecutor struct {
 	// (AllowParallelTasks) but share one working copy — concurrent `git pull`
 	// on it is a race. Wired by TaskPool (local) and LocalExecutorProvider
 	// (runner). Must be non-nil when Prepare is called for a git repository.
-	RepoLock *KeyLock
+	RepoLock       *KeyLock
+	releaseUnlocks map[string]func()
 
 	// OutputsCollector captures the outputs of a workflow task. Nil in the
 	// open-source build and for callers that do not capture outputs.
@@ -971,6 +973,27 @@ func (t *LocalExecutor) Prepare(username string, incomingVersion *string, alias 
 		return nil
 	}
 
+	// Keep protected working trees stable from preparation through execution.
+	paths := []string{}
+	if t.Repository.VerifySignature || t.Repository.GitTag != "" {
+		paths = append(paths, t.Repository.GetFullPath(t.Template.ID))
+	}
+	if t.Inventory.Repository != nil && (t.Inventory.Repository.VerifySignature || t.Inventory.Repository.GitTag != "") {
+		paths = append(paths, t.tmpInventoryFullPath())
+	}
+	sort.Strings(paths)
+	t.releaseUnlocks = make(map[string]func())
+	for _, p := range paths {
+		if _, ok := t.releaseUnlocks[p]; !ok {
+			t.releaseUnlocks[p] = t.RepoLock.Lock(p)
+		}
+	}
+	defer func() {
+		if err != nil {
+			t.releaseLocks()
+		}
+	}()
+
 	t.SetStatus(task_logger.TaskRunningStatus) // It is required for local mode. Don't delete
 
 	// The credential mappings of the project apply to every git operation of the
@@ -1144,6 +1167,7 @@ func (t *LocalExecutor) Prepare(username string, incomingVersion *string, alias 
 // inventory files, app-level working dirs. Safe to invoke on a partially-prepared
 // executor — the underlying destroyers tolerate missing state.
 func (t *LocalExecutor) Cleanup() {
+	defer t.releaseLocks()
 	t.destroyKeys()
 	t.destroyInventoryFile()
 	t.destroyExtraVarsFiles()
@@ -1184,7 +1208,7 @@ func resolveGitBranch(repoBranch string, template db.Template, task db.Task) str
 // branch, so the template's branch and the task's branch are ignored there even
 // if a template still carries them from before the repository became a monorepo.
 func withEffectiveBranch(repository db.Repository, template db.Template, task db.Task) db.Repository {
-	if repository.Monorepo {
+	if repository.Monorepo || repository.VerifySignature || repository.GitTag != "" {
 		return repository
 	}
 
@@ -1305,7 +1329,7 @@ func (t *LocalExecutor) prepareRunTerraform(tfApp *db_lib.TerraformApp, installi
 // different commits still share the working tree afterwards — per-task
 // worktrees if that ever matters.
 func (t *LocalExecutor) updateAndCheckoutRepository() error {
-	unlock := t.RepoLock.Lock(t.Repository.GetFullPath(t.Template.ID))
+	unlock := t.lockRepository(t.Repository.GetFullPath(t.Template.ID))
 	defer unlock()
 
 	if err := t.updateRepository(); err != nil {
@@ -1352,7 +1376,7 @@ func (t *LocalExecutor) checkoutRepository() error {
 	// Checkout the commit the task asks for. A monorepo stays on the head of
 	// its branch: the checkout is shared, and a task-supplied commit is ignored
 	// the same way as a task-supplied branch.
-	if t.Task.CommitHash != nil && !t.Repository.Monorepo {
+	if t.Task.CommitHash != nil && !t.Repository.Monorepo && !t.Repository.VerifySignature && t.Repository.GitTag == "" {
 		return repo.Checkout(*t.Task.CommitHash)
 	}
 
@@ -1453,4 +1477,17 @@ func (t *LocalExecutor) installHostConfigs() (err error) {
 		t.Template.ProjectID, t.HostConfigs, t.Logger)
 
 	return
+}
+
+func (t *LocalExecutor) lockRepository(p string) func() {
+	if _, ok := t.releaseUnlocks[p]; ok {
+		return func() {}
+	}
+	return t.RepoLock.Lock(p)
+}
+func (t *LocalExecutor) releaseLocks() {
+	for p, unlock := range t.releaseUnlocks {
+		unlock()
+		delete(t.releaseUnlocks, p)
+	}
 }

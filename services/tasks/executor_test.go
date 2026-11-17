@@ -116,3 +116,12 @@ func TestLocalExecutorIsKilled(t *testing.T) {
 	exec.Kill() // Process is nil so this only flips the flag
 	assert.True(t, exec.IsKilled(), "Kill() must record the kill request")
 }
+
+func TestWithEffectiveBranch_ReleasePolicy(t *testing.T) {
+	for _, repository := range []db.Repository{{GitBranch: "release", VerifySignature: true}, {GitTag: "v1"}} {
+		t.Run(repository.GitBranch, func(t *testing.T) {
+			effective := withEffectiveBranch(repository, db.Template{GitBranch: new("unsigned"), AllowOverrideBranchInTask: true}, db.Task{GitBranch: new("attacker")})
+			assert.Equal(t, repository, effective)
+		})
+	}
+}

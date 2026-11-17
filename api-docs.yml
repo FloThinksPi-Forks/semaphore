@@ -1194,7 +1194,17 @@ definitions:
         example: git@example.com
       git_branch:
         type: string
+        description: Branch name; mutually exclusive with git_tag.
         example: master
+      git_tag:
+        type: string
+        description: Fixed tag name. For Git URLs, specify exactly one of git_branch and git_tag.
+      verify_signature:
+        type: boolean
+        description: For branches, select the most recent tagged commit on first-parent history. Require an annotated tag signed by signing_key directly targeting the selected release before checkout. Verification failures stop the task. Disables branch and commit overrides.
+      signing_key:
+        type: string
+        description: One ASCII-armored OpenPGP maintainer public key, configured independently of the upstream repository.
       ssh_key_id:
         type: integer
       monorepo:
@@ -1217,7 +1227,17 @@ definitions:
         example: git@example.com
       git_branch:
         type: string
+        description: Branch name; mutually exclusive with git_tag.
         example: master
+      git_tag:
+        type: string
+        description: Fixed tag name. For Git URLs, specify exactly one of git_branch and git_tag.
+      verify_signature:
+        type: boolean
+        description: For branches, select the most recent tagged commit on first-parent history. Require an annotated tag signed by signing_key directly targeting the selected release before checkout. Verification failures stop the task. Disables branch and commit overrides.
+      signing_key:
+        type: string
+        description: One ASCII-armored OpenPGP maintainer public key, configured independently of the upstream repository.
       ssh_key_id:
         type: integer
       monorepo:

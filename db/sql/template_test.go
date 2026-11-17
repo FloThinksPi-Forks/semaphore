@@ -22,16 +22,13 @@ func newTemplateTestProject(t *testing.T, store *SqlDb) (projectID int, reposito
 	})
 	require.NoError(t, err)
 
-	repo, err := store.CreateRepository(db.Repository{
-		ProjectID: project.ID,
-		Name:      "repo",
-		GitURL:    "https://example.com/repo.git",
-		GitBranch: "main",
-		SSHKeyID:  key.ID,
-	})
+	// Migration tests also use this fixture before repository security columns exist.
+	repositoryID, err = store.insert("id",
+		"insert into project__repository(project_id, name, git_url, git_branch, ssh_key_id) values (?, 'repo', 'https://example.com/repo.git', 'main', ?)",
+		project.ID, key.ID)
 	require.NoError(t, err)
 
-	return project.ID, repo.ID
+	return project.ID, repositoryID
 }
 
 func TestCreateTemplateReturnsPersistedVaultIDs(t *testing.T) {

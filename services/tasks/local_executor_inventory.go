@@ -37,6 +37,9 @@ func (t *LocalExecutor) installInventory() (err error) {
 }
 
 func (t *LocalExecutor) getGitClonedInventoryFilename() string {
+	if t.Inventory.Repository.VerifySignature || t.Inventory.Repository.GitTag != "" {
+		return t.Inventory.Repository.GetCheckoutDirName(t.Template.ID) + "_inventory_" + strconv.Itoa(t.Inventory.ID)
+	}
 	return t.Inventory.Repository.GetDirName(t.Template.ID) + "_inventory_" + strconv.Itoa(t.Inventory.ID)
 }
 
@@ -88,8 +91,12 @@ func (t *LocalExecutor) cloneInventoryRepo(keyInstaller db_lib.AccessKeyInstalle
 
 	// Parallel tasks of the same template share this inventory directory —
 	// serialize the pull/remove/clone sequence, same as the main repo.
-	unlock := t.RepoLock.Lock(repo.GetFullPath())
+	unlock := t.lockRepository(repo.GetFullPath())
 	defer unlock()
+
+	if repo.Repository.VerifySignature || repo.Repository.GitTag != "" {
+		return repo.CloneOrPull()
+	}
 
 	// Try to pull the repo before trying to clone it
 	if repo.CanBePulled() {

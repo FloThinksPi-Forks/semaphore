@@ -275,7 +275,9 @@ export default {
     canOverrideBranch() {
       return this.needField('allow_override_branch')
         && this.template.allow_override_branch_in_task
-        && !this.repository?.monorepo;
+        && !this.repository?.monorepo
+        && !this.repository?.verify_signature
+        && !this.repository?.git_tag;
     },
 
     args() {

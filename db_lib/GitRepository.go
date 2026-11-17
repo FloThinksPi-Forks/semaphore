@@ -106,6 +106,9 @@ func (r GitRepository) ValidateRepo() error {
 // A missing directory is cloned; a directory which is not a repository, or
 // one whose pull fails, is removed and cloned from scratch.
 func (r GitRepository) CloneOrPull() error {
+	if r.Repository.VerifySignature || r.Repository.GitTag != "" {
+		return r.prepareRelease()
+	}
 	err := r.ValidateRepo()
 
 	if err != nil {

@@ -227,20 +227,27 @@ func (c CmdGitClient) GetLastCommitHash(r GitRepository) (hash string, err error
 }
 
 func (c CmdGitClient) GetLastRemoteCommitHash(r GitRepository) (hash string, err error) {
-	out, err := c.output(r, GitRepositoryTmpPath, "ls-remote", "--end-of-options", r.Repository.GetGitURL(true), r.Repository.GitBranch)
+	ref := r.Repository.GetGitRef()
+	out, err := c.output(r, GitRepositoryTmpPath, "ls-remote", "--end-of-options", r.Repository.GetGitURL(true), ref, ref+"^{}")
 	if err != nil {
 		return
 	}
-
-	firstSpaceIndex := strings.IndexAny(out, "\t ")
-	if firstSpaceIndex == -1 {
-		err = fmt.Errorf("can't retreave remote commit hash")
+	for _, line := range strings.Split(out, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) != 2 {
+			continue
+		}
+		if fields[1] == ref+"^{}" {
+			return fields[0], nil
+		}
+		if fields[1] == ref {
+			hash = fields[0]
+		}
 	}
-	if err != nil {
-		return
+	if hash == "" {
+		err = fmt.Errorf("can't retrieve remote commit hash")
 	}
 
-	hash = out[0:firstSpaceIndex]
 	return
 }
 

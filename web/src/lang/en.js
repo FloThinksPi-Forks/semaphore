@@ -310,6 +310,13 @@ export default {
   project_name_required: 'Project name is required',
   repository_required: 'Repository is required',
   monorepo: 'Single checkout for all templates',
+  releaseBranchPolicy: 'The repository controls the release reference. Branch and commit overrides are disabled.',
+  gitReferenceType: 'Git reference type',
+  requireSignedRelease: 'Require a signed release tag',
+  requireSignedReleaseHelp: 'Branches use their most recent tagged commit on first-parent history. '
+    + 'The selected release must have an annotated tag signed by this key. Verification errors stop the task.',
+  releaseSigningKey: 'Trusted maintainer public key (armored OpenPGP)',
+  releaseSigningKeyRequired: 'Public key is required',
   monorepoHelp: 'Clone this repository once and share it between all templates, instead of a copy '
     + 'per template. For a repository large enough that a copy per template is a problem. Templates '
     + 'using it can not have a branch of their own, and their tasks can not override the branch or commit.',

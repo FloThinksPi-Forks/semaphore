@@ -75,7 +75,10 @@
         <code
           v-if="!isLocalRepositoryPath(item.git_url)"
           data-testid="repositories-rowBranch"
-        >{{ item.git_branch }}</code>
+        >{{ item.git_tag ? `${$t('tag')}: ` : '' }}{{ item.git_tag || item.git_branch }}</code>
+        <v-icon v-if="item.verify_signature" size="small" :title="$t('requireSignedRelease')">
+          mdi-shield-check
+        </v-icon>
       </template>
 
       <template v-slot:item.ssh_key_id="{ item }">

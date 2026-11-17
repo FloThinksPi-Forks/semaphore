@@ -9,6 +9,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ProtonMail/go-crypto/openpgp"
+	"github.com/go-git/go-git/v5/plumbing"
 	"github.com/semaphoreui/semaphore/pkg/common_errors"
 	"github.com/semaphoreui/semaphore/pkg/git"
 	"github.com/semaphoreui/semaphore/util"
@@ -32,7 +34,7 @@ type Repository struct {
 	Name      string `db:"name" json:"name" binding:"required"`
 	ProjectID int    `db:"project_id" json:"project_id" backup:"-"`
 	GitURL    string `db:"git_url" json:"git_url" binding:"required"`
-	GitBranch string `db:"git_branch" json:"git_branch" binding:"required"`
+	GitBranch string `db:"git_branch" json:"git_branch"`
 	SSHKeyID  int    `db:"ssh_key_id" json:"ssh_key_id" binding:"required" backup:"-"`
 
 	// Monorepo makes every template share one checkout of this repository
@@ -40,7 +42,20 @@ type Repository struct {
 	// that a copy per template is a problem.
 	Monorepo bool `db:"monorepo" json:"monorepo"`
 
+	// GitBranch and GitTag are mutually exclusive.
+	GitTag          string `db:"git_tag" json:"git_tag"`
+	VerifySignature bool   `db:"verify_signature" json:"verify_signature"`
+	SigningKey      string `db:"signing_key" json:"signing_key"`
+
 	SSHKey AccessKey `db:"-" json:"-" backup:"-"`
+}
+
+// GetGitRef returns the fully qualified ref, distinguishing equal branch and tag names.
+func (r Repository) GetGitRef() string {
+	if r.GitTag != "" {
+		return "refs/tags/" + r.GitTag
+	}
+	return "refs/heads/" + r.GitBranch
 }
 
 func (r Repository) ClearCache() error {
@@ -88,6 +103,10 @@ func branchDirName(branch string) string {
 // A monorepo leaves the template out, so every template of the project works in
 // the same checkout. The branch stays in either case.
 func (r Repository) GetCheckoutDirName(templateID int) string {
+	if r.GitTag != "" || r.VerifySignature {
+		// Keep protected checkouts separate from ordinary branch checkouts.
+		r.GitBranch = fmt.Sprintf("%s:%s:%t", r.GitBranch, r.GitTag, r.VerifySignature)
+	}
 	if r.Monorepo {
 		return r.getDirNamePrefix() + branchDirName(r.GitBranch)
 	}
@@ -247,6 +266,21 @@ func (r Repository) GetType() RepositoryType {
 }
 
 func (r Repository) Validate() error {
+	if len(r.SigningKey) > 8192 {
+		return common_errors.NewValidationError("maintainer public key must not exceed 8192 bytes")
+	}
+	if r.GitBranch != "" && r.GitTag != "" {
+		return common_errors.NewValidationError("specify either repository branch or tag, not both")
+	}
+	if (r.VerifySignature || r.GitTag != "") && r.GetType() == RepositoryLocal {
+		return common_errors.NewValidationError("release verification requires a Git repository URL, including file:// for local Git repositories")
+	}
+	if r.VerifySignature {
+		keys, err := openpgp.ReadArmoredKeyRing(strings.NewReader(r.SigningKey))
+		if err != nil || len(keys) != 1 || keys[0].PrivateKey != nil {
+			return common_errors.NewValidationError("supply exactly one valid armored OpenPGP public key")
+		}
+	}
 	if r.Name == "" {
 		return common_errors.NewValidationError("repository name can't be empty")
 	}
@@ -259,12 +293,17 @@ func (r Repository) Validate() error {
 		return err
 	}
 
-	if r.GetType() != RepositoryLocal && r.GitBranch == "" {
-		return common_errors.NewValidationError("repository branch can't be empty")
+	if r.GetType() != RepositoryLocal && r.GitBranch == "" && r.GitTag == "" {
+		return common_errors.NewValidationError("repository branch or tag must be specified")
 	}
 
 	if err := git.ValidateGitBranch(r.GitBranch, "repository"); err != nil {
 		return err
+	}
+	if r.GitTag != "" {
+		if err := plumbing.NewTagReferenceName(r.GitTag).Validate(); err != nil {
+			return common_errors.NewValidationError("repository tag name is invalid")
+		}
 	}
 
 	return nil

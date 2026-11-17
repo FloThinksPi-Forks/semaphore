@@ -1,11 +1,20 @@
 package projects
 
 import (
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
 
+	"github.com/semaphoreui/semaphore/api/helpers"
+	"github.com/semaphoreui/semaphore/db"
+	"github.com/semaphoreui/semaphore/util"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestRepositoryController_lockBrowseDir_SerializesSameDir(t *testing.T) {
@@ -72,4 +81,26 @@ func TestRepositoryController_lockBrowseDir_Reentrant(t *testing.T) {
 	wg.Wait()
 
 	assert.Equal(t, 20, counter)
+}
+
+type rejectedRepositoryKey struct{}
+
+func (rejectedRepositoryKey) DeserializeSecret(*db.AccessKey) error {
+	return errors.New("repository key rejected")
+}
+
+func TestGetRepositoryPlaybooks_FileURLRequiresPreparation(t *testing.T) {
+	previous := util.Config
+	util.Config = &util.ConfigType{TmpPath: t.TempDir()}
+	t.Cleanup(func() { util.Config = previous })
+	repo := db.Repository{ID: 1, ProjectID: 1, GitURL: "file:///source.git", GitBranch: "main", VerifySignature: true}
+	// A cached working tree must not bypass preparation, even for file:// URLs.
+	require.NoError(t, os.MkdirAll(repo.GetFullPath(0), 0700))
+	require.NoError(t, os.WriteFile(filepath.Join(repo.GetFullPath(0), "unverified.yml"), []byte("[]"), 0600))
+	request := helpers.SetContextValue(httptest.NewRequest(http.MethodGet, "/playbooks?app=ansible", nil), "repository", repo)
+	response := httptest.NewRecorder()
+	controller := NewRepositoryController(nil, rejectedRepositoryKey{})
+	controller.GetRepositoryPlaybooks(response, request)
+	assert.Equal(t, http.StatusBadRequest, response.Code)
+	assert.NotContains(t, response.Body.String(), "unverified.yml")
 }

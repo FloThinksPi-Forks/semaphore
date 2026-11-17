@@ -66,7 +66,18 @@
       </v-chip>
     </div>
 
+    <v-select
+      v-model="referenceType"
+      @update:model-value="setReferenceType"
+      :label="$t('gitReferenceType')"
+      :items="[{ title: $t('branch'), value: 'branch' }, { title: $t('tag'), value: 'tag' }]"
+      :disabled="formSaving || type === 'local'"
+      hide-details="auto"
+      class="mb-4"
+      variant="outlined" density="compact"
+    ></v-select>
     <v-text-field
+      v-if="referenceType === 'branch'"
       v-model.trim="item.git_branch"
       :label="$t('branch')"
       :rules="[v => (!!v || type === 'local') || $t('branch_required')]"
@@ -74,14 +85,47 @@
       :disabled="formSaving || type === 'local'"
       variant="outlined"
       density="compact"
+      hide-details="auto"
+      class="mb-2"
       data-testid="repository-gitBranch"
     ></v-text-field>
+    <v-text-field
+      v-else
+      v-model.trim="item.git_tag"
+      :label="$t('tag')"
+      :rules="[v => !!v || $t('tag_required')]"
+      required
+      :disabled="formSaving || type === 'local'"
+      variant="outlined"
+      density="compact"
+      hide-details="auto"
+      class="mb-2"
+      data-testid="repository-gitTag"
+    ></v-text-field>
+
+    <v-checkbox
+      v-model="item.verify_signature"
+      :label="$t('requireSignedRelease')"
+      :hint="$t('requireSignedReleaseHelp')"
+      persistent-hint
+      density="compact"
+      class="mb-4"
+      :disabled="formSaving || type === 'local'"
+    ></v-checkbox>
+    <v-textarea
+      v-if="item.verify_signature"
+      v-model.trim="item.signing_key"
+      :label="$t('releaseSigningKey')"
+      :rules="[v => !!v || $t('releaseSigningKeyRequired')]"
+      :disabled="formSaving" variant="outlined" density="compact"
+    ></v-textarea>
 
     <v-checkbox
       v-model="item.monorepo"
       :label="$t('monorepo')"
       :hint="$t('monorepoHelp')"
       persistent-hint
+      density="compact"
       :disabled="formSaving || type === 'local'"
       class="mt-0 mb-4"
       data-testid="repository-monorepo"
@@ -183,6 +227,7 @@ export default {
   mixins: [ItemFormBase],
   data() {
     return {
+      referenceType: 'branch',
       helpDialog: null,
       helpKey: null,
 
@@ -221,6 +266,18 @@ export default {
   },
 
   methods: {
+    afterLoadData() {
+      this.referenceType = this.item.git_tag ? 'tag' : 'branch';
+    },
+
+    setReferenceType(type) {
+      if (type === 'tag') {
+        this.item.git_branch = '';
+      } else {
+        this.item.git_tag = '';
+      }
+    },
+
     getTypeOfUrl(url) {
       return getRepositoryUrlType(url);
     },

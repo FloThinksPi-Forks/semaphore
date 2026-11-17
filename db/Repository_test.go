@@ -4,6 +4,7 @@ import (
 	"math/rand"
 	"os"
 	"path"
+	"strings"
 	"testing"
 
 	"github.com/semaphoreui/semaphore/util"
@@ -376,4 +377,36 @@ func TestRepository_MonorepoKeepsPerTemplateHome(t *testing.T) {
 
 	assert.NotEqual(t, repo.GetHomePath(1), repo.GetHomePath(2))
 	assert.NotEqual(t, repo.GetInternalPath(1), repo.GetInternalPath(2))
+}
+
+func TestRepository_ReleasePolicyValidation(t *testing.T) {
+	tests := []struct {
+		name   string
+		change func(*Repository)
+		valid  bool
+	}{
+		{"branch default", func(r *Repository) {}, true},
+		{"unsigned fixed tag", func(r *Repository) { r.GitBranch = ""; r.GitTag = "v1" }, true},
+		{"branch and tag", func(r *Repository) { r.GitTag = "v1" }, false},
+		{"neither branch nor tag", func(r *Repository) { r.GitBranch = "" }, false},
+		{"invalid tag", func(r *Repository) { r.GitBranch = ""; r.GitTag = "invalid..tag" }, false},
+		{"missing key", func(r *Repository) { r.VerifySignature = true }, false},
+		{"malformed key", func(r *Repository) {
+			r.VerifySignature = true
+			r.SigningKey = "-----BEGIN PGP PUBLIC KEY BLOCK-----\ninvalid"
+		}, false},
+		{"oversized key", func(r *Repository) { r.SigningKey = strings.Repeat("x", 8193) }, false},
+		{"local repository verification", func(r *Repository) { r.GitURL = "/tmp/repository"; r.VerifySignature = true }, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := Repository{Name: "r", GitURL: "https://example.com/repo.git", GitBranch: "release"}
+			tt.change(&repo)
+			if tt.valid {
+				assert.NoError(t, repo.Validate())
+			} else {
+				assert.Error(t, repo.Validate())
+			}
+		})
+	}
 }

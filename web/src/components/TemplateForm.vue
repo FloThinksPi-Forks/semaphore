@@ -207,7 +207,7 @@
           </v-autocomplete>
           <v-tooltip
             location="bottom"
-            :disabled="!isMonorepo"
+            :disabled="!isBranchFixed"
             content-class="opacity1"
             max-width="400"
             transition="fade-transition"
@@ -217,7 +217,7 @@
                    styled nor behaves as clickable; the wrapper carries the tooltip. -->
               <span
                 v-bind="props"
-                :tabindex="isMonorepo ? 0 : null"
+                :tabindex="isBranchFixed ? 0 : null"
                 style="position: absolute; right: 45px; top: 8px"
               >
                 <v-chip
@@ -225,15 +225,15 @@
                   size="small"
                   label
                   class="TemplateForm__smallChip"
-                  :class="{ 'text-disabled': isMonorepo }"
+                  :class="{ 'text-disabled': isBranchFixed }"
                   data-testid="templateForm-branchChip"
-                  v-on="isMonorepo ? {} : { click: () => { setBranch = !setBranch; } }"
+                  v-on="isBranchFixed ? {} : { click: () => { setBranch = !setBranch; } }"
                 >
                   {{ gitBranch }}
                 </v-chip>
               </span>
             </template>
-            {{ $t('monorepoBranchTooltip') }}
+            {{ branchPolicyTooltip }}
           </v-tooltip>
         </div>
 
@@ -266,10 +266,10 @@
                 :label="fieldLabel('branch')"
                 variant="outlined"
                 density="compact"
-                :disabled="formSaving || isMonorepo"
+                :disabled="formSaving || isBranchFixed"
                 :placeholder="$t('branch')"
-                :hint="isMonorepo ? $t('monorepoBranchHint') : ''"
-                :persistent-hint="isMonorepo"
+                :hint="isBranchFixed ? branchPolicyTooltip : ''"
+                :persistent-hint="isBranchFixed"
               ></v-autocomplete>
             </div>
             <div v-else>
@@ -280,10 +280,10 @@
                 :label="fieldLabel('branch')"
                 variant="outlined"
                 density="compact"
-                :disabled="formSaving || isMonorepo"
+                :disabled="formSaving || isBranchFixed"
                 :placeholder="$t('branch')"
-                :hint="isMonorepo ? $t('monorepoBranchHint') : ''"
-                :persistent-hint="isMonorepo"
+                :hint="isBranchFixed ? branchPolicyTooltip : ''"
+                :persistent-hint="isBranchFixed"
               ></v-text-field>
             </div>
           </v-card-text>
@@ -605,7 +605,7 @@
 
           <v-tooltip
             location="bottom"
-            :disabled="!isMonorepo"
+            :disabled="!isBranchFixed"
             content-class="opacity1"
             max-width="400"
             transition="fade-transition"
@@ -617,12 +617,12 @@
                   class="mt-0"
                   :label="$t('allow_override_branch')"
                   v-model="item.allow_override_branch_in_task"
-                  :disabled="isMonorepo"
+                  :disabled="isBranchFixed"
                   data-testid="templateForm-allowOverrideBranchInTask"
                 />
               </div>
             </template>
-            {{ $t('monorepoBranchTooltip') }}
+            {{ branchPolicyTooltip }}
           </v-tooltip>
 
           <v-checkbox
@@ -1096,7 +1096,7 @@ export default {
       await Promise.all([this.loadBranches()]);
     },
 
-    isMonorepo(val) {
+    isBranchFixed(val) {
       if (val && this.item) {
         this.item.git_branch = null;
         this.item.allow_override_branch_in_task = false;
@@ -1187,16 +1187,25 @@ export default {
       return !!repo?.monorepo;
     },
 
+    isBranchFixed() {
+      const repo = (this.repositories || []).find((x) => x.id === this.repositoryId);
+      return this.isMonorepo || !!repo?.verify_signature || !!repo?.git_tag;
+    },
+
+    branchPolicyTooltip() {
+      return this.isMonorepo ? this.$t('monorepoBranchTooltip') : this.$t('releaseBranchPolicy');
+    },
+
     gitBranchOfTemplate() {
       return this.item?.git_branch;
     },
 
     gitBranch() {
-      let ret = this.item?.git_branch;
+      let ret = this.isBranchFixed ? null : this.item?.git_branch;
       if (!ret) {
         const repo = this.repositories.find((x) => x.id === this.repositoryId);
         if (repo) {
-          ret = repo.git_branch;
+          ret = repo.git_tag || repo.git_branch;
         }
       }
       return ret;

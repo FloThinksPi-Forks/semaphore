@@ -102,7 +102,7 @@ func (c *RepositoryController) decryptKey(w http.ResponseWriter, repo *db.Reposi
 func (c *RepositoryController) GetRepositoryBranches(w http.ResponseWriter, r *http.Request) {
 	repo := helpers.GetFromContext(r, "repository").(db.Repository)
 
-	if repo.GetType() == db.RepositoryLocal || repo.GetType() == db.RepositoryFile {
+	if repo.GetType() == db.RepositoryLocal {
 		helpers.WriteJSON(w, http.StatusBadRequest, "Wrong repository type: "+repo.GetType())
 		return
 	}
@@ -135,15 +135,15 @@ func (c *RepositoryController) GetRepositoryBranches(w http.ResponseWriter, r *h
 }
 
 // GetRepositoryPlaybooks returns the list of playbook (.yml/.yaml) file paths,
-// relative to the repository root, found in the repository. For git/ssh/https
-// repositories it checks out the requested branch (defaulting to the
+// relative to the repository root, found in the repository. For Git URLs,
+// including file://, it checks out the requested branch (defaulting to the
 // repository's configured branch) into a scratch directory before scanning it.
 func (c *RepositoryController) GetRepositoryPlaybooks(w http.ResponseWriter, r *http.Request) {
 	repo := helpers.GetFromContext(r, "repository").(db.Repository)
 
 	var rootDir string
 
-	if repo.GetType() == db.RepositoryLocal || repo.GetType() == db.RepositoryFile {
+	if repo.GetType() == db.RepositoryLocal {
 		// A local repository is read from disk; its key is never used, so a key
 		// that cannot be decrypted must not stop the listing.
 		rootDir = repo.GetFullPath(0)
@@ -153,7 +153,7 @@ func (c *RepositoryController) GetRepositoryPlaybooks(w http.ResponseWriter, r *
 		}
 
 		branch := r.URL.Query().Get("branch")
-		if branch == "" {
+		if branch == "" || repo.VerifySignature || repo.GitTag != "" {
 			branch = repo.GitBranch
 		}
 
@@ -169,7 +169,7 @@ func (c *RepositoryController) GetRepositoryPlaybooks(w http.ResponseWriter, r *
 		// with. Key the scratch dir by branch (hashed, since branch names can
 		// contain slashes) so each branch gets its own cached checkout instead
 		// of failing to check out a branch that was never fetched.
-		branchHash := sha1.Sum([]byte(branch))
+		branchHash := sha1.Sum([]byte(repoCopy.GetGitRef()))
 		hostConfigs, hcErr := c.hostConfigs(r, repo)
 		if hcErr != nil {
 			helpers.WriteError(w, hcErr)

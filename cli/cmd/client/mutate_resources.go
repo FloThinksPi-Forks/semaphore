@@ -481,7 +481,11 @@ func repositoryMutable(res resource[db.Repository]) mutable[db.Repository] {
 		createExample: `  semaphore client repository create -p 1 --name infra --url git@github.com:org/infra.git --branch main --ssh-key deploy`,
 		updateExample: `  semaphore client repository update infra --branch release`,
 		validate: func(cmd *cobra.Command, repo db.Repository) error {
-			return requireFields(cmd, "--name", repo.Name, "--url", repo.GitURL, "--branch", repo.GitBranch, "--ssh-key", nz(repo.SSHKeyID))
+			reference := repo.GitBranch
+			if reference == "" {
+				reference = repo.GitTag
+			}
+			return requireFields(cmd, "--name", repo.Name, "--url", repo.GitURL, "--branch or git_tag", reference, "--ssh-key", nz(repo.SSHKeyID))
 		},
 		bind: func(cmd *cobra.Command) applyFunc[db.Repository] {
 			var name, gitURL, branch, sshKey string
@@ -499,6 +503,7 @@ func repositoryMutable(res resource[db.Repository]) mutable[db.Repository] {
 				}
 				if fl.Changed("branch") {
 					repo.GitBranch = branch
+					repo.GitTag = ""
 				}
 				if sshKey != "" {
 					id, err := resolveRef(cmd, r, api, p, keyResource(), sshKey)

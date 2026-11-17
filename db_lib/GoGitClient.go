@@ -281,23 +281,21 @@ func (c GoGitClient) GetLastRemoteCommitHash(r GitRepository) (hash string, err 
 	}
 
 	refs, err := rem.List(&git.ListOptions{
-		Auth: auth,
+		Auth:          auth,
+		PeelingOption: git.AppendPeeled,
 	})
 	if err != nil {
 		return
 	}
 
-	var lastRemoteRef *plumbing.Reference
-
+	ref := r.Repository.GetGitRef()
 	for _, rf := range refs {
-
-		if rf.Name().Short() == r.Repository.GitBranch {
-			lastRemoteRef = rf
+		if string(rf.Name()) == ref+"^{}" {
+			return rf.Hash().String(), nil
 		}
-	}
-
-	if lastRemoteRef != nil {
-		hash = lastRemoteRef.Hash().String()
+		if string(rf.Name()) == ref {
+			hash = rf.Hash().String()
+		}
 	}
 
 	return

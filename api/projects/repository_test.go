@@ -103,3 +103,30 @@ func TestAddRepository_WritesOnlyToTheProjectOfTheURL(t *testing.T) {
 		})
 	}
 }
+
+func TestAddRepository_BranchOrTag(t *testing.T) {
+	for _, tt := range []struct {
+		name, branch, tag string
+		status            int
+	}{
+		{"tag", "", "v1.2.3", http.StatusCreated},
+		{"both", "release", "v1.2.3", http.StatusBadRequest},
+		{"neither", "", "", http.StatusBadRequest},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			f := newMembershipFixture(t)
+			key, err := f.store.CreateAccessKey(db.AccessKey{Name: "None", Type: db.AccessKeyNone, ProjectID: &f.project.ID})
+			require.NoError(t, err)
+			body := fmt.Sprintf(`{"name":"release","project_id":%d,"git_url":"https://example.com/repo.git","git_branch":%q,"git_tag":%q,"ssh_key_id":%d}`, f.project.ID, tt.branch, tt.tag, key.ID)
+			response, _ := f.postRepository(f.member, f.project.ID, body)
+			assert.Equal(t, tt.status, response.Code, response.Body.String())
+			if tt.status == http.StatusCreated {
+				repos, err := f.store.GetRepositories(f.project.ID, db.RetrieveQueryParams{})
+				require.NoError(t, err)
+				require.Len(t, repos, 1)
+				assert.Empty(t, repos[0].GitBranch)
+				assert.Equal(t, tt.tag, repos[0].GitTag)
+			}
+		})
+	}
+}
